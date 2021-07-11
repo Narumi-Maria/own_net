@@ -1,0 +1,4 @@
+# 忽略数据集
+/data/data/*
+.idea
+/output/
