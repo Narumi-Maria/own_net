@@ -33,6 +33,9 @@ from data.OBdataset import create_loader
 from utils.misc import AvgMeter, construct_path_dict, make_log, pre_mkdir
 from utils.metric import CalTotalMetric
 
+from backbone.ResNet import pretrained_resnet18_4ch
+import torch.nn as nn
+
 torch.manual_seed(0)
 torch.cuda.manual_seed_all(0)
 torchcudnn.benchmark = True
@@ -132,16 +135,20 @@ class Trainer:
                 self.opti.zero_grad()
 
                 ###加载数据
-                index, train_bgs, train_masks, train_fgs, train_targets, _ = train_data
+                index, train_bgs, train_masks, train_fgs, train_targets, num, composite_list, feature_pos = train_data
                 train_bgs = train_bgs.to(self.dev, non_blocking=True)
                 train_masks = train_masks.to(self.dev, non_blocking=True)
                 train_fgs = train_fgs.to(self.dev, non_blocking=True)
                 train_targets = train_targets.to(self.dev, non_blocking=True)
+                num = num.to(self.dev, non_blocking=True)
+                composite_list = composite_list.to(self.dev, non_blocking=True)
+                feature_pos = feature_pos.to(self.dev, non_blocking=True)
 
                 # 送入模型训练
-                train_outs = self.net(train_bgs, train_fgs, train_masks, 'train')
+                train_outs, feature_map = self.net(train_bgs, train_fgs, train_masks, 'train')
 
-                train_loss = self.loss(train_outs, train_targets.long())
+                mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, num, self.dev)
+                train_loss = self.loss(train_outs, train_targets.long()) + mimicking_loss
                 train_loss.backward()
                 self.opti.step()
 
@@ -190,13 +197,13 @@ class Trainer:
             tqdm_iter.set_description(f"{self.model_name}:" f"te=>{test_batch_id + 1}")
             with torch.no_grad():
                 # 加载数据
-                index, test_bgs, test_masks, test_fgs, test_targets, nums = test_data
+                index, test_bgs, test_masks, test_fgs, test_targets, nums, _, _ = test_data
                 test_bgs = test_bgs.to(self.dev, non_blocking=True)
                 test_masks = test_masks.to(self.dev, non_blocking=True)
                 test_fgs = test_fgs.to(self.dev, non_blocking=True)
                 nums = nums.to(self.dev, non_blocking=True)
 
-                test_outs = self.net(test_bgs, test_fgs, test_masks, 'val')
+                test_outs, _ = self.net(test_bgs, test_fgs, test_masks, 'val')
                 test_preds = np.argmax(test_outs.cpu().numpy(), axis=1)
                 test_targets = test_targets.cpu().numpy()
 
@@ -332,6 +339,32 @@ class Trainer:
                 raise NotImplementedError
         else:
             raise Exception(f"{load_path}路径不正常，请检查")
+
+
+def feature_mimicking(composites, feature_pos, feature_map, num, device):
+    alpha = 0.1
+    net_ = pretrained_resnet18_4ch(pretrained=True).to(device)
+    # features = list(net.children())[:-1]
+    # net_ = nn.Sequential(*features)
+    # net_ = nn.Sequential(*list(net.children()[:-2]))
+    composite_cat_list = []
+    pos_feature = torch.zeros(int(num.sum()), 512, 1, 1).to(device)
+    sum = 0
+    for i in range(num.shape[0]):
+        composite_cat_list.append(composites[i, :num[i], :, :, :])
+        for j in range(num[i]):
+            pos_feature[sum, :, 0, 0] = feature_map[i, :, int(feature_pos[i, j, 1]), int(feature_pos[i, j, 0])]
+            sum += 1
+    composites_ = torch.cat(composite_cat_list, dim=0)
+    composite_feature = net_(composites_)
+    composite_feature = nn.AdaptiveAvgPool2d(1)(composite_feature)  # pos_num(8),512,1,1
+    pos_feature.view(-1, 512)
+    composite_feature.view(-1, 512)
+    mimicking_loss = torch.zeros(1).to(device)
+    for i in range(num.sum()):
+        similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
+        mimicking_loss += 1 - similarity.squeeze(0)
+    return mimicking_loss * alpha
 
 
 if __name__ == "__main__":

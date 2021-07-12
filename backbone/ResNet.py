@@ -284,10 +284,11 @@ def Backbone_ResNet50_in1(pretrained=True):
 
     return div_2, div_4, div_8, div_16, div_32
 
+
 def Backbone_ResNet18_in3(pretrained=True):
     if pretrained:
         print("The backbone model loads the pretrained parameters...")
-    net = resnet18(pretrained=pretrained)
+    net = pretrained_resnet18_4ch(pretrained=pretrained)
     div_2 = nn.Sequential(*list(net.children())[:3])
     div_4 = nn.Sequential(*list(net.children())[3:5])
     div_8 = net.layer2
@@ -296,18 +297,20 @@ def Backbone_ResNet18_in3(pretrained=True):
 
     return div_2, div_4, div_8, div_16, div_32
 
+
 def Backbone_ResNet18_in3_1(pretrained=True):
     if pretrained:
         print("The backbone model loads the pretrained parameters...")
     net = resnet18(pretrained=pretrained)
-    div_1 =nn.Sequential(*list(net.children())[:1])
+    div_1 = nn.Sequential(*list(net.children())[:1])
     div_2 = nn.Sequential(*list(net.children())[1:3])
     div_4 = nn.Sequential(*list(net.children())[3:5])
     div_8 = net.layer2
     div_16 = net.layer3
-    div_32 = net.layer4
+    div_32 = make_layer_4(BasicBlock, 448, 2, stride=2)
 
     return div_1, div_2, div_4, div_8, div_16, div_32
+
 
 def Backbone_ResNet18_in1(pretrained=True):
     if pretrained:
@@ -321,6 +324,36 @@ def Backbone_ResNet18_in1(pretrained=True):
     div_32 = net.layer4
 
     return div_2, div_4, div_8, div_16, div_32
+
+
+def pretrained_resnet18_4ch(pretrained=True, **kwargs):
+    model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+    model.conv1 = nn.Conv2d(4, 64, kernel_size=(7, 7), stride=(2, 2), padding=3, bias=False)
+    # 加载与训练模型，这里把输入第四个通道的权重权重按照rgb转gray的公式复制了一份
+    if pretrained:
+        checkpoint = torch.load('/tmp/pycharm_project_965/data/data/Net_best.pth.tar')
+        model.load_state_dict(checkpoint['state_dict'], strict=False)
+
+        # print('loaded pretrained resnet18_4ch')
+
+    return model
+
+
+def make_layer_4(block, planes, blocks, stride=1):
+    downsample = None
+    inplanes = 256
+    if stride != 1 or inplanes != planes * block.expansion:
+        downsample = nn.Sequential(
+            conv1x1(inplanes, planes * block.expansion, stride), nn.BatchNorm2d(planes * block.expansion),
+        )
+
+    layers = []
+    layers.append(block(inplanes, planes, stride, downsample))
+    inplanes = planes * block.expansion
+    for _ in range(1, blocks):
+        layers.append(block(inplanes, planes))
+
+    return nn.Sequential(*layers)
 
 
 if __name__ == "__main__":

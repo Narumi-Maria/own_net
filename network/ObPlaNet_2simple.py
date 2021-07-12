@@ -67,7 +67,7 @@ class ObPlaNet_resnet18(nn.Module):
         self.upconv2 = BasicConv2d(64, 64, kernel_size=3, stride=1, padding=1)
         self.upconv1 = BasicConv2d(64, 64, kernel_size=3, stride=1, padding=1)
 
-        self.classifier = nn.Conv2d(576, 2, 1)
+        self.classifier = nn.Conv2d(512, 2, 1)
 
     def forward(self, bg_in_data, fg_in_data, mask_in_data=None, mode='val'):
         """
@@ -80,7 +80,8 @@ class ObPlaNet_resnet18(nn.Module):
         if ('train' == mode):
             self.Eiters += 1
         # Unet 前半部分,背景和前景特征提取
-        bg_in_data_1 = self.bg_encoder1(bg_in_data)  # torch.Size([2, 64, 128, 128])
+        bg_in_data_ = torch.cat([bg_in_data, mask_in_data], dim=1)
+        bg_in_data_1 = self.bg_encoder1(bg_in_data_)  # torch.Size([2, 64, 128, 128])
         del bg_in_data
         fg_in_data_1 = self.fg_encoder1(fg_in_data)  # torch.Size([2, 64, 128, 128])
         del fg_in_data
@@ -99,7 +100,7 @@ class ObPlaNet_resnet18(nn.Module):
         fg_in_data_8 = self.fg_encoder8(fg_in_data_4)  # torch.Size([2, 128, 32, 32])
         bg_in_data_16 = self.bg_encoder16(bg_in_data_8)  # torch.Size([2, 512, 8, 8])
         fg_in_data_16 = self.fg_encoder16(fg_in_data_8)  # torch.Size([2, 256, 16, 16])
-        fg_in_data_32 = self.fg_encoder32(fg_in_data_16)  # torch.Size([2, 512, 8, 8])
+        fg_in_data_32 = self.fg_encoder32(fg_in_data_16)  # torch.Size([2, 448, 8, 8]) TODO
 
         del fg_in_data_4, fg_in_data_8, fg_in_data_16
 
@@ -117,11 +118,11 @@ class ObPlaNet_resnet18(nn.Module):
 
         bg_out_data = self.upconv1(self.upsample(bg_out_data_1, scale_factor=2))  # torch.Size([2, 64, 256, 256])
 
-        fuse_out = torch.cat([fg_in_data, bg_out_data], dim=1)  # torch.Size([2, 576, 256, 256])
+        fuse_out = torch.cat([fg_in_data, bg_out_data], dim=1)  # torch.Size([2, 512, 256, 256]) TODO
 
         out_data = self.classifier(fuse_out)
 
-        return out_data  # torch.Size([2, 2, 256, 256])
+        return out_data, fuse_out  # torch.Size([2, 2, 256, 256])
 
 
 if __name__ == "__main__":
@@ -130,5 +131,5 @@ if __name__ == "__main__":
     c = torch.randn((2, 1, 256, 256))
 
     model = ObPlaNet_resnet18()
-    x = model(a, b, c)
+    x, _ = model(a, b, c)
     print(x.size())
