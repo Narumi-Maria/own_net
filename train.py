@@ -148,6 +148,7 @@ class Trainer:
                 train_outs, feature_map = self.net(train_bgs, train_fgs, train_masks, 'train')
 
                 mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, num, self.dev)
+                out_loss = self.loss(train_outs, train_targets.long())
                 train_loss = self.loss(train_outs, train_targets.long()) + mimicking_loss
                 train_loss.backward()
                 self.opti.step()
@@ -163,9 +164,10 @@ class Trainer:
                 if self.args["print_freq"] > 0 and (curr_iter + 1) % self.args["print_freq"] == 0:
                     log = (
                         f"[I:{curr_iter}/{self.iter_num}][E:{curr_epoch}:{self.end_epoch}]>"
-                        f"[{self.model_name}]"
+                        # f"[{self.model_name}]"
                         f"[Lr:{self.opti.param_groups[0]['lr']:.7f}]"
                         f"[Avg:{train_loss_record.avg:.5f}|Cur:{train_iter_loss:.5f}|"
+                        f"[L2:{out_loss.item():.3f}][Lm:{mimicking_loss.item():.3f}]"
                     )
                     print(log)
                     make_log(self.path["tr_log"], log)
@@ -248,7 +250,7 @@ class Trainer:
                 self.opti.param_groups[0]["lr"] = self.opti.param_groups[0]["lr"] * ratio
                 self.opti.param_groups[1]["lr"] = self.opti.param_groups[0]["lr"]
         elif self.args["lr_type"] == "all_decay":
-            lr = self.args["lr"] * (0.5 ** (curr // 10))
+            lr = self.args["lr"] * (0.5 ** (curr // 3))
             for param_group in self.opti.param_groups:
                 param_group['lr'] = lr
         else:
