@@ -25,7 +25,7 @@ class simpleDFN(nn.Module):
         self.unfold = nn.Unfold(kernel_size=3, dilation=1, padding=1, stride=1)
         self.pool = nn.AdaptiveAvgPool2d(self.kernel_size)
 
-    def forward(self, x, y):
+    def forward(self, x, y): # x:bg y:fg
         N, xC, xH, xW = x.size()
         kernel = self.gernerate_kernel(self.pool(y))
         # print(kernel.size())

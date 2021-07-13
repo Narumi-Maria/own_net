@@ -63,8 +63,8 @@ class ObPlaNet_resnet18(nn.Module):
         # dynamic conv部分
         self.fg_trans16 = nn.Conv2d(512, 64, 1)
         self.fg_trans8 = nn.Conv2d(256, 64, 1)
-        self.selfdc_16 = simpleDFN(64, 64, 64, 3, 4)
-        self.selfdc_8 = simpleDFN(64, 64, 64, 3, 4)
+        self.selfdc_16 = simpleDFN(64, 64, 512, 3, 4)
+        self.selfdc_8 = simpleDFN(64, 64, 512, 3, 4)
 
         self.upconv16 = BasicConv2d(512, 256, kernel_size=3, stride=1, padding=1)
         self.upconv8 = BasicConv2d(256, 128, kernel_size=3, stride=1, padding=1)
@@ -72,7 +72,8 @@ class ObPlaNet_resnet18(nn.Module):
         self.upconv2 = BasicConv2d(64, 64, kernel_size=3, stride=1, padding=1)
         self.upconv1 = BasicConv2d(64, 64, kernel_size=3, stride=1, padding=1)
 
-        self.classifier = nn.Conv2d(64, 2, 1)
+        self.classifier = nn.Conv2d(512, 2, 1)
+        print("dynamic conv")
 
     def forward(self, bg_in_data, fg_in_data, mask_in_data=None, mode='val'):
         """
@@ -85,7 +86,8 @@ class ObPlaNet_resnet18(nn.Module):
         if ('train' == mode):
             self.Eiters += 1
         # Unet 前半部分,背景和前景特征提取
-        bg_in_data_1 = self.bg_encoder1(bg_in_data)  # torch.Size([2, 64, 128, 128])
+        bg_in_data_ = torch.cat([bg_in_data, mask_in_data], dim=1)
+        bg_in_data_1 = self.bg_encoder1(bg_in_data_)  # torch.Size([2, 64, 128, 128])
         del bg_in_data
         fg_in_data_1 = self.fg_encoder1(fg_in_data)  # torch.Size([2, 64, 128, 128])
         del fg_in_data
@@ -127,7 +129,7 @@ class ObPlaNet_resnet18(nn.Module):
 
         out_data = self.classifier(fuse_out)  # torch.Size([2, 2, 256, 256])
 
-        return out_data
+        return out_data, fuse_out
 
 
 if __name__ == "__main__":
@@ -136,5 +138,6 @@ if __name__ == "__main__":
     c = torch.randn((2, 1, 256, 256))
 
     model = ObPlaNet_resnet18()
-    x = model(a, b, c)
+    x, y = model(a, b, c)
     print(x.size())
+    print(y.size())

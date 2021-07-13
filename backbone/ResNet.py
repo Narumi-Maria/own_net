@@ -307,8 +307,8 @@ def Backbone_ResNet18_in3_1(pretrained=True):
     div_4 = nn.Sequential(*list(net.children())[3:5])
     div_8 = net.layer2
     div_16 = net.layer3
-    div_32 = make_layer_4(BasicBlock, 448, 2, stride=2)
-
+    # div_32 = make_layer_4(BasicBlock, 448, 2, stride=2)
+    div_32 = net.layer4
     return div_1, div_2, div_4, div_8, div_16, div_32
 
 
