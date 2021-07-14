@@ -56,7 +56,7 @@ class Trainer:
             self.model_name = self.args["model"] + "_" + self.args["suffix"]
         else:
             self.model_name = self.args["model"]
-        self.path = construct_path_dict(proj_root=proj_root, exp_name=self.model_name)
+        self.path = construct_path_dict(proj_root=proj_root, exp_name=self.args["Experiment_name"])
 
         pre_mkdir(path_config=self.path)
         shutil.copy(f"{proj_root}/config.py", self.path["cfg_log"])
@@ -118,6 +118,7 @@ class Trainer:
         for curr_epoch in range(self.start_epoch, self.end_epoch):
             self.net.train()
             train_loss_record = AvgMeter()
+            mimicking_loss_record = AvgMeter()
 
             # 改变学习率
             if self.args["lr_type"] == "poly":
@@ -129,48 +130,50 @@ class Trainer:
             else:
                 raise NotImplementedError
 
-            for train_batch_id, train_data in enumerate(self.tr_loader):
-                curr_iter = curr_epoch * len(self.tr_loader) + train_batch_id
-
-                self.opti.zero_grad()
-
-                ###加载数据
-                index, train_bgs, train_masks, train_fgs, train_targets, num, composite_list, feature_pos = train_data
-                train_bgs = train_bgs.to(self.dev, non_blocking=True)
-                train_masks = train_masks.to(self.dev, non_blocking=True)
-                train_fgs = train_fgs.to(self.dev, non_blocking=True)
-                train_targets = train_targets.to(self.dev, non_blocking=True)
-                num = num.to(self.dev, non_blocking=True)
-                composite_list = composite_list.to(self.dev, non_blocking=True)
-                feature_pos = feature_pos.to(self.dev, non_blocking=True)
-
-                # 送入模型训练
-                train_outs, feature_map = self.net(train_bgs, train_fgs, train_masks, 'train')
-
-                mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, num, self.dev)
-                out_loss = self.loss(train_outs, train_targets.long())
-                train_loss = self.loss(train_outs, train_targets.long()) + mimicking_loss
-                train_loss.backward()
-                self.opti.step()
-
-                # 仅在累计的时候使用item()获取数据
-                train_iter_loss = train_loss.item()
-                train_batch_size = train_bgs.size(0)
-                train_loss_record.update(train_iter_loss, train_batch_size)
-
-                tb_logger.log_value('loss', train_loss.item(), step=self.net.Eiters)
-
-                # 记录每一次迭代的数据
-                if self.args["print_freq"] > 0 and (curr_iter + 1) % self.args["print_freq"] == 0:
-                    log = (
-                        f"[I:{curr_iter}/{self.iter_num}][E:{curr_epoch}:{self.end_epoch}]>"
-                        # f"[{self.model_name}]"
-                        f"[Lr:{self.opti.param_groups[0]['lr']:.7f}]"
-                        f"[Avg:{train_loss_record.avg:.5f}|Cur:{train_iter_loss:.5f}|"
-                        f"[L2:{out_loss.item():.3f}][Lm:{mimicking_loss.item():.3f}]"
-                    )
-                    print(log)
-                    make_log(self.path["tr_log"], log)
+            # for train_batch_id, train_data in enumerate(self.tr_loader):
+            #     curr_iter = curr_epoch * len(self.tr_loader) + train_batch_id
+            #
+            #     self.opti.zero_grad()
+            #
+            #     ###加载数据
+            #     index, train_bgs, train_masks, train_fgs, train_targets, num, composite_list, feature_pos = train_data
+            #     train_bgs = train_bgs.to(self.dev, non_blocking=True)
+            #     train_masks = train_masks.to(self.dev, non_blocking=True)
+            #     train_fgs = train_fgs.to(self.dev, non_blocking=True)
+            #     train_targets = train_targets.to(self.dev, non_blocking=True)
+            #     num = num.to(self.dev, non_blocking=True)
+            #     composite_list = composite_list.to(self.dev, non_blocking=True)
+            #     feature_pos = feature_pos.to(self.dev, non_blocking=True)
+            #
+            #     # 送入模型训练
+            #     train_outs, feature_map = self.net(train_bgs, train_fgs, train_masks, 'train')
+            #
+            #     mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, num, self.dev)
+            #     out_loss = self.loss(train_outs, train_targets.long())
+            #     train_loss = out_loss + mimicking_loss
+            #     train_loss.backward()
+            #     self.opti.step()
+            #
+            #     # 仅在累计的时候使用item()获取数据
+            #     train_iter_loss = out_loss.item()
+            #     mimicking_iter_loss = mimicking_loss.item()
+            #     train_batch_size = train_bgs.size(0)
+            #     train_loss_record.update(train_iter_loss, train_batch_size)
+            #     mimicking_loss_record.update(mimicking_iter_loss, train_batch_size)
+            #
+            #     tb_logger.log_value('loss', train_loss.item(), step=self.net.Eiters)
+            #
+            #     # 记录每一次迭代的数据
+            #     if self.args["print_freq"] > 0 and (curr_iter + 1) % self.args["print_freq"] == 0:
+            #         log = (
+            #             f"[I:{curr_iter}/{self.iter_num}][E:{curr_epoch}:{self.end_epoch}]>"
+            #             # f"[{self.model_name}]"
+            #             f"[Lr:{self.opti.param_groups[0]['lr']:.7f}]"
+            #             f"(L2)[Avg:{train_loss_record.avg:.3f}|Cur:{train_iter_loss:.3f}]"
+            #             f"(Lm)[Avg:{mimicking_loss_record.avg:.3f}][Cur:{mimicking_iter_loss:.3f}]"
+            #         )
+            #         print(log)
+            #         make_log(self.path["tr_log"], log)
 
             # 每个周期都进行保存测试，保存的是针对第curr_epoch+1周期的参数
             self.save_checkpoint(
@@ -231,6 +234,7 @@ class Trainer:
         log = fscore_str + weighted_acc_str + pred_str + 'TP: %f, TN: %f, FP: %f, FN: %f' % (TP, TN, FP, FN)
         print(log)
         make_log(self.path["tr_log"], log)
+        make_log(self.path["te_log"], log)
 
     def change_lr(self, curr):
         """
