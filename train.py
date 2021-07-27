@@ -68,11 +68,11 @@ class Trainer:
         # 加载数据集
         self.tr_loader = create_loader(
             self.args["tr_data_path"], self.args["coco_dir"], self.args["fg_dir"], self.args["mask_dir"],
-            self.args["input_size"], 'train', self.args["batch_size"], self.args["num_workers"], True,
+            self.args["input_size"], 'train', self.args["batch_size"], self.args["num_workers"], False,
         )
         self.ts_loader = create_loader(
             self.args["ts_data_path"], self.args["coco_dir"], self.args["fg_dir"], self.args["mask_dir"],
-            self.args["input_size"], 'test', self.args["batch_size"], self.args["num_workers"], True,
+            self.args["input_size"], 'test', self.args["batch_size"], self.args["num_workers"], False,
         )
 
         # 加载model
@@ -130,50 +130,50 @@ class Trainer:
             else:
                 raise NotImplementedError
 
-            # for train_batch_id, train_data in enumerate(self.tr_loader):
-            #     curr_iter = curr_epoch * len(self.tr_loader) + train_batch_id
-            #
-            #     self.opti.zero_grad()
-            #
-            #     ###加载数据
-            #     index, train_bgs, train_masks, train_fgs, train_targets, num, composite_list, feature_pos = train_data
-            #     train_bgs = train_bgs.to(self.dev, non_blocking=True)
-            #     train_masks = train_masks.to(self.dev, non_blocking=True)
-            #     train_fgs = train_fgs.to(self.dev, non_blocking=True)
-            #     train_targets = train_targets.to(self.dev, non_blocking=True)
-            #     num = num.to(self.dev, non_blocking=True)
-            #     composite_list = composite_list.to(self.dev, non_blocking=True)
-            #     feature_pos = feature_pos.to(self.dev, non_blocking=True)
-            #
-            #     # 送入模型训练
-            #     train_outs, feature_map = self.net(train_bgs, train_fgs, train_masks, 'train')
-            #
-            #     mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, num, self.dev)
-            #     out_loss = self.loss(train_outs, train_targets.long())
-            #     train_loss = out_loss + mimicking_loss
-            #     train_loss.backward()
-            #     self.opti.step()
-            #
-            #     # 仅在累计的时候使用item()获取数据
-            #     train_iter_loss = out_loss.item()
-            #     mimicking_iter_loss = mimicking_loss.item()
-            #     train_batch_size = train_bgs.size(0)
-            #     train_loss_record.update(train_iter_loss, train_batch_size)
-            #     mimicking_loss_record.update(mimicking_iter_loss, train_batch_size)
-            #
-            #     tb_logger.log_value('loss', train_loss.item(), step=self.net.Eiters)
-            #
-            #     # 记录每一次迭代的数据
-            #     if self.args["print_freq"] > 0 and (curr_iter + 1) % self.args["print_freq"] == 0:
-            #         log = (
-            #             f"[I:{curr_iter}/{self.iter_num}][E:{curr_epoch}:{self.end_epoch}]>"
-            #             # f"[{self.model_name}]"
-            #             f"[Lr:{self.opti.param_groups[0]['lr']:.7f}]"
-            #             f"(L2)[Avg:{train_loss_record.avg:.3f}|Cur:{train_iter_loss:.3f}]"
-            #             f"(Lm)[Avg:{mimicking_loss_record.avg:.3f}][Cur:{mimicking_iter_loss:.3f}]"
-            #         )
-            #         print(log)
-            #         make_log(self.path["tr_log"], log)
+            for train_batch_id, train_data in enumerate(self.tr_loader):
+                curr_iter = curr_epoch * len(self.tr_loader) + train_batch_id
+
+                self.opti.zero_grad()
+
+                ###加载数据
+                index, train_bgs, train_masks, train_fgs, train_targets, num, composite_list, feature_pos = train_data
+                train_bgs = train_bgs.to(self.dev, non_blocking=True)
+                train_masks = train_masks.to(self.dev, non_blocking=True)
+                train_fgs = train_fgs.to(self.dev, non_blocking=True)
+                train_targets = train_targets.to(self.dev, non_blocking=True)
+                num = num.to(self.dev, non_blocking=True)
+                composite_list = composite_list.to(self.dev, non_blocking=True)
+                feature_pos = feature_pos.to(self.dev, non_blocking=True)
+
+                # 送入模型训练
+                train_outs, feature_map = self.net(train_bgs, train_fgs, train_masks, 'train')
+
+                mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, num, self.dev)
+                out_loss = self.loss(train_outs, train_targets.long())
+                train_loss = out_loss + mimicking_loss
+                train_loss.backward()
+                self.opti.step()
+
+                # 仅在累计的时候使用item()获取数据
+                train_iter_loss = out_loss.item()
+                mimicking_iter_loss = mimicking_loss.item()
+                train_batch_size = train_bgs.size(0)
+                train_loss_record.update(train_iter_loss, train_batch_size)
+                mimicking_loss_record.update(mimicking_iter_loss, train_batch_size)
+
+                tb_logger.log_value('loss', train_loss.item(), step=self.net.Eiters)
+
+                # 记录每一次迭代的数据
+                if self.args["print_freq"] > 0 and (curr_iter + 1) % self.args["print_freq"] == 0:
+                    log = (
+                        f"[I:{curr_iter}/{self.iter_num}][E:{curr_epoch}:{self.end_epoch}]>"
+                        # f"[{self.model_name}]"
+                        f"[Lr:{self.opti.param_groups[0]['lr']:.7f}]"
+                        f"(L2)[Avg:{train_loss_record.avg:.3f}|Cur:{train_iter_loss:.3f}]"
+                        f"(Lm)[Avg:{mimicking_loss_record.avg:.3f}][Cur:{mimicking_iter_loss:.3f}]"
+                    )
+                    print(log)
+                    make_log(self.path["tr_log"], log)
 
             # 每个周期都进行保存测试，保存的是针对第curr_epoch+1周期的参数
             self.save_checkpoint(
@@ -197,20 +197,28 @@ class Trainer:
         TN = 0
         FP = 0
         FN = 0
+        mimicking_loss_record = AvgMeter()
         for test_batch_id, test_data in tqdm_iter:
             self.net.eval()
             tqdm_iter.set_description(f"{self.model_name}:" f"te=>{test_batch_id + 1}")
             with torch.no_grad():
                 # 加载数据
-                index, test_bgs, test_masks, test_fgs, test_targets, nums, _, _ = test_data
+                index, test_bgs, test_masks, test_fgs, test_targets, nums, composite_list, feature_pos = test_data
                 test_bgs = test_bgs.to(self.dev, non_blocking=True)
                 test_masks = test_masks.to(self.dev, non_blocking=True)
                 test_fgs = test_fgs.to(self.dev, non_blocking=True)
                 nums = nums.to(self.dev, non_blocking=True)
+                composite_list = composite_list.to(self.dev, non_blocking=True)
+                feature_pos = feature_pos.to(self.dev, non_blocking=True)
 
-                test_outs, _ = self.net(test_bgs, test_fgs, test_masks, 'val')
+                test_outs, feature_map = self.net(test_bgs, test_fgs, test_masks, 'val')
                 test_preds = np.argmax(test_outs.cpu().numpy(), axis=1)
                 test_targets = test_targets.cpu().numpy()
+
+                mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, nums, self.dev)
+                mimicking_iter_loss = mimicking_loss.item()
+                test_batch_size = test_bgs.size(0)
+                mimicking_loss_record.update(mimicking_iter_loss, test_batch_size)
 
                 TP += ((test_preds == 1) & (test_targets == 1)).sum()
                 TN += ((test_preds == 0) & (test_targets == 0)).sum()
@@ -232,6 +240,9 @@ class Trainer:
         pred_pos = TP / (TP + FN)
         pred_str = 'pred_neg: %f, pred_pos: %f ,' % (pred_neg, pred_pos)
         log = fscore_str + weighted_acc_str + pred_str + 'TP: %f, TN: %f, FP: %f, FN: %f' % (TP, TN, FP, FN)
+
+        log += ' [LM(test-L2): %f]' % mimicking_loss_record.avg
+
         print(log)
         make_log(self.path["tr_log"], log)
         make_log(self.path["te_log"], log)
@@ -348,7 +359,7 @@ class Trainer:
 
 
 def feature_mimicking(composites, feature_pos, feature_map, num, device):
-    alpha = 0.1
+    alpha = 1
     net_ = pretrained_resnet18_4ch(pretrained=True).to(device)
     # features = list(net.children())[:-1]
     # net_ = nn.Sequential(*features)
@@ -366,10 +377,13 @@ def feature_mimicking(composites, feature_pos, feature_map, num, device):
     composite_feature = nn.AdaptiveAvgPool2d(1)(composite_feature)  # pos_num(8),512,1,1
     pos_feature.view(-1, 512)
     composite_feature.view(-1, 512)
-    mimicking_loss = torch.zeros(1).to(device)
-    for i in range(num.sum()):
-        similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
-        mimicking_loss += 1 - similarity.squeeze(0)
+    # L2损失
+    mimicking_loss_criter = nn.MSELoss()
+    mimicking_loss = mimicking_loss_criter(pos_feature, composite_feature)
+    # mimicking_loss = torch.zeros(1).to(device)
+    # for i in range(num.sum()):
+    #     similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
+    #     mimicking_loss += 1 - similarity.squeeze(0)
     return mimicking_loss * alpha
 
 

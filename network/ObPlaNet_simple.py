@@ -88,13 +88,14 @@ class ObPlaNet_resnet18(nn.Module):
         # Unet 前半部分,背景和前景特征提取
         bg_in_data_ = torch.cat([bg_in_data, mask_in_data], dim=1)
         bg_in_data_1 = self.bg_encoder1(bg_in_data_)  # torch.Size([2, 64, 128, 128])
-        del bg_in_data
-        fg_in_data_1 = self.fg_encoder1(fg_in_data)  # torch.Size([2, 64, 128, 128])
-        del fg_in_data
+        # del bg_in_data
+        fg_cat_mask = torch.cat([fg_in_data, mask_in_data], dim=1)
+        fg_in_data_1 = self.fg_encoder1(fg_cat_mask)  # torch.Size([2, 64, 128, 128])
+        # del fg_in_data
 
-        if self.add_mask:
-            mask_in_data_1 = self.mask_conv(mask_in_data)  # torch.Size([2, 64, 128, 128])
-            fg_in_data_1 = fg_in_data_1 + mask_in_data_1  # torch.Size([2, 64, 128, 128])
+        # if self.add_mask:
+        #     mask_in_data_1 = self.mask_conv(mask_in_data)  # torch.Size([2, 64, 128, 128])
+        #     fg_in_data_1 = fg_in_data_1 + mask_in_data_1  # torch.Size([2, 64, 128, 128])
 
         bg_in_data_2 = self.bg_encoder2(bg_in_data_1)  # torch.Size([2, 64, 64, 64])
         fg_in_data_2 = self.fg_encoder2(fg_in_data_1)  # torch.Size([2, 64, 128, 128])

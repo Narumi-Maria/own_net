@@ -302,6 +302,16 @@ def Backbone_ResNet18_in3_1(pretrained=True):
     if pretrained:
         print("The backbone model loads the pretrained parameters...")
     net = resnet18(pretrained=pretrained)
+
+    model_dict = net.state_dict()
+    conv1 = model_dict['conv1.weight']
+    new = torch.zeros(64, 1, 7, 7)
+    for i, output_channel in enumerate(conv1):
+        new[i] = 0.299 * output_channel[0] + 0.587 * output_channel[1] + 0.114 * output_channel[2]
+    net.conv1 = nn.Conv2d(4, 64, kernel_size=(7, 7), stride=(2, 2), padding=3, bias=False)
+    model_dict['conv1.weight'] = torch.cat((conv1, new), dim=1)
+    net.load_state_dict(model_dict)
+
     div_1 = nn.Sequential(*list(net.children())[:1])
     div_2 = nn.Sequential(*list(net.children())[1:3])
     div_4 = nn.Sequential(*list(net.children())[3:5])

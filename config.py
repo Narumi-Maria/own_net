@@ -46,5 +46,5 @@ arg_config = {
     "batch_size": 4,
     "num_workers": 6,
     "input_size": 256,  # 图片resize的大小
-    "Experiment_name": "model2_mimicking"
+    "Experiment_name": "Model2+FM(L2)"
 }
