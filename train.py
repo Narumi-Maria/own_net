@@ -265,7 +265,7 @@ class Trainer:
                 self.opti.param_groups[0]["lr"] = self.opti.param_groups[0]["lr"] * ratio
                 self.opti.param_groups[1]["lr"] = self.opti.param_groups[0]["lr"]
         elif self.args["lr_type"] == "all_decay":
-            lr = self.args["lr"] * (0.5 ** (curr // 3))
+            lr = self.args["lr"] * (0.5 ** (curr // 2))
             for param_group in self.opti.param_groups:
                 param_group['lr'] = lr
         else:
@@ -359,7 +359,7 @@ class Trainer:
 
 
 def feature_mimicking(composites, feature_pos, feature_map, num, device):
-    alpha = 1
+    alpha = 0.1
     net_ = pretrained_resnet18_4ch(pretrained=True).to(device)
     # features = list(net.children())[:-1]
     # net_ = nn.Sequential(*features)
@@ -378,12 +378,12 @@ def feature_mimicking(composites, feature_pos, feature_map, num, device):
     pos_feature.view(-1, 512)
     composite_feature.view(-1, 512)
     # L2损失
-    mimicking_loss_criter = nn.MSELoss()
-    mimicking_loss = mimicking_loss_criter(pos_feature, composite_feature)
-    # mimicking_loss = torch.zeros(1).to(device)
-    # for i in range(num.sum()):
-    #     similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
-    #     mimicking_loss += 1 - similarity.squeeze(0)
+    # mimicking_loss_criter = nn.MSELoss()
+    # mimicking_loss = mimicking_loss_criter(pos_feature, composite_feature)
+    mimicking_loss = torch.zeros(1).to(device)
+    for i in range(num.sum()):
+        similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
+        mimicking_loss += 1 - similarity.squeeze(0)
     return mimicking_loss * alpha
 
 

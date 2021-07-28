@@ -43,8 +43,8 @@ arg_config = {
     "nesterov": False,
     "lr_type": "all_decay",  # 学习率调整的策略
     "lr_decay": 0.9,  # poly
-    "batch_size": 4,
+    "batch_size": 2,
     "num_workers": 6,
     "input_size": 256,  # 图片resize的大小
-    "Experiment_name": "Model2+FM(L2)"
+    "Experiment_name": "Model2+FM(shuffle f)"
 }
