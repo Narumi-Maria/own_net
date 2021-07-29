@@ -29,7 +29,12 @@ class CPDataset(Dataset):
             datatype(str): train/val, 指定加载的是训练集还是测试集,
         """
         # 从文件中加载数据信息
-        self.data = _collect_info(file, coco_dir, fg_dir, mask_dir, datatype)
+        if datatype =='train':
+            with open("data/data/train_shuffle.json", 'r', encoding='utf-8') as json_file:
+                self.data = json.load(json_file)
+                self.data = tuple(tuple([y for y in x]) for x in self.data)
+        else:
+            self.data = _collect_info(file, coco_dir, fg_dir, mask_dir, datatype)
         self.insize = in_size
 
         # 对图片的处理

@@ -11,7 +11,7 @@ __all__ = ["proj_root", "arg_config"]
 proj_root = os.path.dirname(__file__)
 datasets_root = "data/data"
 
-tr_data_path = os.path.join(datasets_root, "train_pair_new.json")  # 训练集数据路径
+tr_data_path = os.path.join(datasets_root, "train_shuffle.json")  # 训练集数据路径
 ts_data_path = os.path.join(datasets_root, "test_pair_new.json")  # 测试集数据路径
 # coco_dir = '/media/user/73b6ed39-9723-42c5-8680-3282cb804c62/code/coco/images/train2017' # 合成图中背景图片路径
 coco_dir = 'data/data/train2017'
@@ -43,8 +43,8 @@ arg_config = {
     "nesterov": False,
     "lr_type": "all_decay",  # 学习率调整的策略
     "lr_decay": 0.9,  # poly
-    "batch_size": 2,
+    "batch_size": 4,
     "num_workers": 6,
     "input_size": 256,  # 图片resize的大小
-    "Experiment_name": "Model2+FM(shuffle f)"
+    "Experiment_name": "Model2+FM(shuffleF l2)"
 }

@@ -35,9 +35,18 @@ from utils.metric import CalTotalMetric
 
 from backbone.ResNet import pretrained_resnet18_4ch
 import torch.nn as nn
+import random
 
-torch.manual_seed(0)
-torch.cuda.manual_seed_all(0)
+# torch.manual_seed(0)
+# torch.cuda.manual_seed_all(0)
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+# 设置随机数种子
+setup_seed(0)
 torchcudnn.benchmark = True
 torchcudnn.enabled = True
 torchcudnn.deterministic = True
@@ -378,12 +387,12 @@ def feature_mimicking(composites, feature_pos, feature_map, num, device):
     pos_feature.view(-1, 512)
     composite_feature.view(-1, 512)
     # L2损失
-    # mimicking_loss_criter = nn.MSELoss()
-    # mimicking_loss = mimicking_loss_criter(pos_feature, composite_feature)
-    mimicking_loss = torch.zeros(1).to(device)
-    for i in range(num.sum()):
-        similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
-        mimicking_loss += 1 - similarity.squeeze(0)
+    mimicking_loss_criter = nn.MSELoss()
+    mimicking_loss = mimicking_loss_criter(pos_feature, composite_feature)
+    # mimicking_loss = torch.zeros(1).to(device)
+    # for i in range(num.sum()):
+    #     similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
+    #     mimicking_loss += 1 - similarity.squeeze(0)
     return mimicking_loss * alpha
 
 
