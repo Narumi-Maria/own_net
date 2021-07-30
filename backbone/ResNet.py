@@ -341,7 +341,7 @@ def pretrained_resnet18_4ch(pretrained=True, **kwargs):
     model.conv1 = nn.Conv2d(4, 64, kernel_size=(7, 7), stride=(2, 2), padding=3, bias=False)
     # 加载与训练模型，这里把输入第四个通道的权重权重按照rgb转gray的公式复制了一份
     if pretrained:
-        checkpoint = torch.load('/tmp/pycharm_project_965/data/data/Net_best.pth.tar')
+        checkpoint = torch.load('/home/lqy/Own_net2/data/data/Net_best.pth.tar')
         model.load_state_dict(checkpoint['state_dict'], strict=False)
 
         # print('loaded pretrained resnet18_4ch')

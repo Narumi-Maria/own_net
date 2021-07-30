@@ -27,8 +27,8 @@ class Compose(object):
         self.transforms = transforms
 
     def __call__(self, bg, fg, mask):
-        assert bg.size == fg.size
-        assert fg.size == mask.size
+        # assert bg.size == fg.size
+        # assert fg.size == mask.size
         for t in self.transforms:
             bg, fg, mask = t(bg, fg, mask)
         return bg, fg, mask

@@ -37,6 +37,7 @@ from backbone.ResNet import pretrained_resnet18_4ch
 import torch.nn as nn
 import random
 
+
 # torch.manual_seed(0)
 # torch.cuda.manual_seed_all(0)
 def setup_seed(seed):
@@ -45,6 +46,8 @@ def setup_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
+
+
 # 设置随机数种子
 setup_seed(0)
 torchcudnn.benchmark = True
@@ -73,6 +76,7 @@ class Trainer:
 
         self.save_path = self.path["save"]
         self.save_pre = self.args["save_pre"]
+        self.bestF1 = 0.
 
         # 加载数据集
         self.tr_loader = create_loader(
@@ -243,6 +247,10 @@ class Trainer:
         recall = TP / (TP + FN)
         fscore = (2 * precision * recall) / (precision + recall)
         fscore_str = 'F-1 Measure: %f, ' % fscore
+        if fscore > self.bestF1:
+            self.bestF1 = fscore
+            weight_path = os.path.join('output', self.args["Experiment_name"], 'pth', 'best_weight.pth')
+            torch.save(self.net.state_dict(), weight_path)
         weighted_acc = (TP / (TP + FN) + TN / (TN + FP)) * 0.5
         weighted_acc_str = 'Weighted acc measure: %f, ' % weighted_acc
         pred_neg = TN / (TN + FP)
@@ -319,7 +327,7 @@ class Trainer:
                 nesterov=self.args["nesterov"],
             )
         elif self.args["optim"] == "Adam_trick":
-            optimizer = Adam(self.net.parameters(), lr=self.args["lr"])
+            optimizer = Adam(filter(lambda p: p.requires_grad, self.net.parameters()), lr=self.args["lr"])
         else:
             raise NotImplementedError
         print("optimizer = ", optimizer)

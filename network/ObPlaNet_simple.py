@@ -48,6 +48,10 @@ class ObPlaNet_resnet18(nn.Module):
             self.bg_encoder8,
             self.bg_encoder16,
         ) = Backbone_ResNet18_in3(pretrained=pretrained)
+
+        for p in self.parameters():
+            p.requires_grad = False
+
         (
             self.fg_encoder1,
             self.fg_encoder2,

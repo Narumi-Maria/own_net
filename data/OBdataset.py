@@ -169,11 +169,13 @@ def _collect_info(json_file, coco_dir, fg_dir, mask_dir, datatype='train'):
         (
             index,
             os.path.join(coco_dir, "%012d.jpg" % int(row['scID'])),  # background image path
-            os.path.join(fg_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
-                                                             int(row['newWidth']), int(row['newHeight']))),
+            # os.path.join(fg_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
+            #                                                  int(row['newWidth']), int(row['newHeight']))),
+            os.path.join(fg_dir, "foreground/{}.jpg".format(int(row['annID']))),
             # composite image path, to obtain foreground object
-            os.path.join(mask_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
-                                                               int(row['newWidth']), int(row['newHeight']))),
+            # os.path.join(mask_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
+            #                                                    int(row['newWidth']), int(row['newHeight']))),
+            os.path.join(fg_dir, "foreground/mask_{}.jpg".format(int(row['annID']))),
             # mask image path
             row['scale'],
             row['pos_label'], row['neg_label'],
