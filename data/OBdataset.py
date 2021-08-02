@@ -29,12 +29,7 @@ class CPDataset(Dataset):
             datatype(str): train/val, 指定加载的是训练集还是测试集,
         """
         # 从文件中加载数据信息
-        if datatype =='train':
-            with open("data/data/train_shuffle.json", 'r', encoding='utf-8') as json_file:
-                self.data = json.load(json_file)
-                self.data = tuple(tuple([y for y in x]) for x in self.data)
-        else:
-            self.data = _collect_info(file, coco_dir, fg_dir, mask_dir, datatype)
+        self.data = _collect_info(file, coco_dir, fg_dir, mask_dir, datatype)
         self.insize = in_size
 
         # 对图片的处理
@@ -46,6 +41,19 @@ class CPDataset(Dataset):
             ]
         )
         self.train_mask_transform = transforms.ToTensor()
+        self.train_cropfg_transform = transforms.Compose(
+            [
+                transforms.CenterCrop(128),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),  # 处理的是Tensor
+            ]
+        )
+        self.train_cropmask_transform = transforms.Compose(
+            [
+                transforms.CenterCrop(128),
+                transforms.ToTensor(),
+            ]
+        )
 
     def __len__(self):
         return len(self.data)
@@ -93,17 +101,6 @@ class CPDataset(Dataset):
         composite_cat = torch.zeros(50 - len(composite_list), 4, 256, 256)
         composite_list = torch.cat((composite_list_, composite_cat), dim=0)
 
-        # composites_ = []
-        # for composite in composite_list:
-        #     composite = transforms.Compose(
-        #         [
-        #             transforms.Resize((256, 256)),
-        #             transforms.ToTensor()
-        #         ]
-        #     )(composite)
-        #     composites_.append(composite)
-        # composites = torch.stack(composites_, dim=0)
-
         # 加载相应目标图, 合理位置为1, 不合理位置为0, 其余位置为255
         target, feature_pos = _obtain_target(bg_img.size[0], bg_img.size[1], self.insize, pos_label, neg_label)
         for i in range(50 - len(feature_pos)):
@@ -111,13 +108,15 @@ class CPDataset(Dataset):
         feature_pos = torch.Tensor(feature_pos)
 
         bg_t, fg_t, mask_t = self.train_triple_transform(bg_img, fg_img, mask)
+        mask_t_half = self.train_cropmask_transform(mask_t)
         mask_t = self.train_mask_transform(mask_t)
+        fg_t_half = self.train_cropfg_transform(fg_t)
         fg_t = self.train_img_transform(fg_t)
         bg_t = self.train_img_transform(bg_t)
         target_t = self.train_mask_transform(target) * 255
         labels_num = (target_t != 255).sum()
 
-        return i, bg_t, mask_t, fg_t, target_t.squeeze(), labels_num, composite_list, feature_pos
+        return i, bg_t, mask_t, fg_t, target_t.squeeze(), labels_num, composite_list, feature_pos, fg_t_half, mask_t_half
 
 
 def _obtain_target(original_width, original_height, in_size, pos_label, neg_label):
@@ -169,13 +168,13 @@ def _collect_info(json_file, coco_dir, fg_dir, mask_dir, datatype='train'):
         (
             index,
             os.path.join(coco_dir, "%012d.jpg" % int(row['scID'])),  # background image path
-            # os.path.join(fg_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
-            #                                                  int(row['newWidth']), int(row['newHeight']))),
-            os.path.join(fg_dir, "foreground/{}.jpg".format(int(row['annID']))),
+            os.path.join(fg_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
+                                                             int(row['newWidth']), int(row['newHeight']))),
+            # os.path.join(fg_dir, "foreground/{}.jpg".format(int(row['annID']))),
             # composite image path, to obtain foreground object
-            # os.path.join(mask_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
-            #                                                    int(row['newWidth']), int(row['newHeight']))),
-            os.path.join(fg_dir, "foreground/mask_{}.jpg".format(int(row['annID']))),
+            os.path.join(mask_dir, "{}/{}_{}_{}_{}.jpg".format(datatype, int(row['annID']), int(row['scID']),
+                                                               int(row['newWidth']), int(row['newHeight']))),
+            # os.path.join(fg_dir, "foreground/mask_{}.jpg".format(int(row['annID']))),
             # mask image path
             row['scale'],
             row['pos_label'], row['neg_label'],
@@ -195,7 +194,7 @@ def _to_center(bbox):
 
 def create_loader(table_path, coco_dir, fg_dir, mask_dir, in_size, datatype, batch_size, num_workers, shuffle):
     dset = CPDataset(table_path, coco_dir, fg_dir, mask_dir, in_size, datatype)
-    data_loader = DataLoader(dset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
+    data_loader = DataLoader(dset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle, drop_last=True)
 
     return data_loader
 

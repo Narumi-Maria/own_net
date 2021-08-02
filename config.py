@@ -9,12 +9,12 @@ import os
 __all__ = ["proj_root", "arg_config"]
 
 proj_root = os.path.dirname(__file__)
-datasets_root = "data/data"
+datasets_root = "/home/lqy/Own_net2/data/data"
 
-tr_data_path = os.path.join(datasets_root, "train_shuffle.json")  # 训练集数据路径
+tr_data_path = os.path.join(datasets_root, "train_pair_new.json")  # 训练集数据路径
 ts_data_path = os.path.join(datasets_root, "test_pair_new.json")  # 测试集数据路径
 # coco_dir = '/media/user/73b6ed39-9723-42c5-8680-3282cb804c62/code/coco/images/train2017' # 合成图中背景图片路径
-coco_dir = 'data/data/train2017'
+coco_dir = '/home/lqy/Own_net2/data/data/train2017'
 fg_dir = os.path.join(datasets_root, "fg")  # 合成图中前景图片路径
 mask_dir = os.path.join(datasets_root, "mask")  # 合成图中前景mask路径
 
@@ -46,5 +46,5 @@ arg_config = {
     "batch_size": 4,
     "num_workers": 6,
     "input_size": 256,  # 图片resize的大小
-    "Experiment_name": "Model2+FM(fix bgencoder)"
+    "Experiment_name": "Model2+FM_cos(fix bgencoder+k=3+ms reconstruction_2)"
 }

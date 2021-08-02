@@ -36,6 +36,7 @@ from utils.metric import CalTotalMetric
 from backbone.ResNet import pretrained_resnet18_4ch
 import torch.nn as nn
 import random
+import math
 
 
 # torch.manual_seed(0)
@@ -55,11 +56,69 @@ torchcudnn.enabled = True
 torchcudnn.deterministic = True
 
 
+def tile_features(features, num_pieces):
+    _, _, h, w = features.size()
+
+    num_pieces_per_line = int(math.sqrt(num_pieces))
+
+    h_per_patch = h // num_pieces_per_line
+    w_per_patch = w // num_pieces_per_line
+
+    """
+    +-----+-----+
+    |  1  |  2  |
+    +-----+-----+
+    |  3  |  4  |
+    +-----+-----+
+
+    +-----+-----+-----+-----+
+    |  1  |  2  |  3  |  4  |
+    +-----+-----+-----+-----+
+    """
+    patches = []
+    for splitted_features in torch.split(features, h_per_patch, dim=2):
+        for patch in torch.split(splitted_features, w_per_patch, dim=3):
+            patches.append(patch)
+
+    return torch.cat(patches, dim=0)
+
+
+def merge_features(features, num_pieces, batch_size):
+    """
+    +-----+-----+-----+-----+
+    |  1  |  2  |  3  |  4  |
+    +-----+-----+-----+-----+
+
+    +-----+-----+
+    |  1  |  2  |
+    +-----+-----+
+    |  3  |  4  |
+    +-----+-----+
+    """
+    features_list = list(torch.split(features, batch_size))
+    num_pieces_per_line = int(math.sqrt(num_pieces))
+
+    index = 0
+    ext_h_list = []
+
+    for _ in range(num_pieces_per_line):
+
+        ext_w_list = []
+        for _ in range(num_pieces_per_line):
+            ext_w_list.append(features_list[index])
+            index += 1
+
+        ext_h_list.append(torch.cat(ext_w_list, dim=3))
+
+    features = torch.cat(ext_h_list, dim=2)
+    return features
+
+
 class Trainer:
     def __init__(self, args):
         super(Trainer, self).__init__()
         self.args = args
-        self.dev = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.dev = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
         self.to_pil = transforms.ToPILImage()
         pprint(self.args)
 
@@ -81,11 +140,11 @@ class Trainer:
         # 加载数据集
         self.tr_loader = create_loader(
             self.args["tr_data_path"], self.args["coco_dir"], self.args["fg_dir"], self.args["mask_dir"],
-            self.args["input_size"], 'train', self.args["batch_size"], self.args["num_workers"], False,
+            self.args["input_size"], 'train', self.args["batch_size"], self.args["num_workers"], True,
         )
         self.ts_loader = create_loader(
             self.args["ts_data_path"], self.args["coco_dir"], self.args["fg_dir"], self.args["mask_dir"],
-            self.args["input_size"], 'test', self.args["batch_size"], self.args["num_workers"], False,
+            self.args["input_size"], 'test', self.args["batch_size"], self.args["num_workers"], True,
         )
 
         # 加载model
@@ -93,6 +152,7 @@ class Trainer:
 
         # 损失函数
         self.loss = CrossEntropyLoss(ignore_index=255, reduction=self.args["reduction"]).to(self.dev)
+        self.re_loss = nn.MSELoss().to(self.dev)
 
         # 设置优化器
         self.opti = self.make_optim()
@@ -132,6 +192,7 @@ class Trainer:
             self.net.train()
             train_loss_record = AvgMeter()
             mimicking_loss_record = AvgMeter()
+            reconstruction_loss_record = AvgMeter()
 
             # 改变学习率
             if self.args["lr_type"] == "poly":
@@ -149,7 +210,7 @@ class Trainer:
                 self.opti.zero_grad()
 
                 ###加载数据
-                index, train_bgs, train_masks, train_fgs, train_targets, num, composite_list, feature_pos = train_data
+                index, train_bgs, train_masks, train_fgs, train_targets, num, composite_list, feature_pos, train_fgs_half, train_msk_half = train_data
                 train_bgs = train_bgs.to(self.dev, non_blocking=True)
                 train_masks = train_masks.to(self.dev, non_blocking=True)
                 train_fgs = train_fgs.to(self.dev, non_blocking=True)
@@ -157,22 +218,37 @@ class Trainer:
                 num = num.to(self.dev, non_blocking=True)
                 composite_list = composite_list.to(self.dev, non_blocking=True)
                 feature_pos = feature_pos.to(self.dev, non_blocking=True)
+                train_fgs_half = train_fgs_half.to(self.dev, non_blocking=True)
+                train_msk_half = train_msk_half.to(self.dev, non_blocking=True)
 
                 # 送入模型训练
                 train_outs, feature_map = self.net(train_bgs, train_fgs, train_masks, 'train')
 
+                # Puzzle Module
+                p_alpha = 1
+                bg_tiled_images = tile_features(train_bgs, 4)  # torch.Size([4b, 3, 256, 256])
+                train_fgs_half = train_fgs_half.repeat(4, 1, 1, 1)
+                train_msk_half = train_msk_half.repeat(4, 1, 1, 1)
+                train_outs_half, _ = self.net(bg_tiled_images, train_fgs_half, train_msk_half, 'train')
+                re_train_outs = merge_features(train_outs_half, 4, self.args["batch_size"])
+                reconstruction_loss = p_alpha * self.re_loss(re_train_outs, train_outs)
+
                 mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, num, self.dev)
+
                 out_loss = self.loss(train_outs, train_targets.long())
-                train_loss = out_loss + mimicking_loss
+
+                train_loss = out_loss + mimicking_loss + reconstruction_loss
                 train_loss.backward()
                 self.opti.step()
 
                 # 仅在累计的时候使用item()获取数据
                 train_iter_loss = out_loss.item()
                 mimicking_iter_loss = mimicking_loss.item()
+                reconstruction_iter_loss = reconstruction_loss.item()
                 train_batch_size = train_bgs.size(0)
                 train_loss_record.update(train_iter_loss, train_batch_size)
                 mimicking_loss_record.update(mimicking_iter_loss, train_batch_size)
+                reconstruction_loss_record.update(reconstruction_iter_loss, train_batch_size)
 
                 tb_logger.log_value('loss', train_loss.item(), step=self.net.Eiters)
 
@@ -184,6 +260,7 @@ class Trainer:
                         f"[Lr:{self.opti.param_groups[0]['lr']:.7f}]"
                         f"(L2)[Avg:{train_loss_record.avg:.3f}|Cur:{train_iter_loss:.3f}]"
                         f"(Lm)[Avg:{mimicking_loss_record.avg:.3f}][Cur:{mimicking_iter_loss:.3f}]"
+                        f"(Lre)[Avg:{reconstruction_loss_record.avg:.3f}][Cur:{reconstruction_iter_loss:.3f}]"
                     )
                     print(log)
                     make_log(self.path["tr_log"], log)
@@ -211,27 +288,41 @@ class Trainer:
         FP = 0
         FN = 0
         mimicking_loss_record = AvgMeter()
+        reconstruction_loss_record = AvgMeter()
         for test_batch_id, test_data in tqdm_iter:
             self.net.eval()
             tqdm_iter.set_description(f"{self.model_name}:" f"te=>{test_batch_id + 1}")
             with torch.no_grad():
                 # 加载数据
-                index, test_bgs, test_masks, test_fgs, test_targets, nums, composite_list, feature_pos = test_data
+                index, test_bgs, test_masks, test_fgs, test_targets, nums, composite_list, feature_pos, test_fgs_half, test_msk_half = test_data
                 test_bgs = test_bgs.to(self.dev, non_blocking=True)
                 test_masks = test_masks.to(self.dev, non_blocking=True)
                 test_fgs = test_fgs.to(self.dev, non_blocking=True)
                 nums = nums.to(self.dev, non_blocking=True)
                 composite_list = composite_list.to(self.dev, non_blocking=True)
                 feature_pos = feature_pos.to(self.dev, non_blocking=True)
+                test_fgs_half = test_fgs_half.to(self.dev, non_blocking=True)
+                test_msk_half = test_msk_half.to(self.dev, non_blocking=True)
 
                 test_outs, feature_map = self.net(test_bgs, test_fgs, test_masks, 'val')
                 test_preds = np.argmax(test_outs.cpu().numpy(), axis=1)
                 test_targets = test_targets.cpu().numpy()
 
+                # Puzzle Module
+                p_alpha = 1
+                bg_tiled_images = tile_features(test_bgs, 4)  # torch.Size([4b, 3, 256, 256])
+                test_fgs_half = test_fgs_half.repeat(4, 1, 1, 1)
+                test_msk_half = test_msk_half.repeat(4, 1, 1, 1)
+                test_outs_half, _ = self.net(bg_tiled_images, test_fgs_half, test_msk_half, 'train')
+                re_test_outs = merge_features(test_outs_half, 4, self.args["batch_size"])
+                reconstruction_loss = p_alpha * self.re_loss(re_test_outs, test_outs)
+
                 mimicking_loss = feature_mimicking(composite_list, feature_pos, feature_map, nums, self.dev)
                 mimicking_iter_loss = mimicking_loss.item()
+                reconstruction_iter_loss = reconstruction_loss.item()
                 test_batch_size = test_bgs.size(0)
                 mimicking_loss_record.update(mimicking_iter_loss, test_batch_size)
+                reconstruction_loss_record.update(reconstruction_iter_loss, test_batch_size)
 
                 TP += ((test_preds == 1) & (test_targets == 1)).sum()
                 TN += ((test_preds == 0) & (test_targets == 0)).sum()
@@ -259,6 +350,7 @@ class Trainer:
         log = fscore_str + weighted_acc_str + pred_str + 'TP: %f, TN: %f, FP: %f, FN: %f' % (TP, TN, FP, FN)
 
         log += ' [LM(test-L2): %f]' % mimicking_loss_record.avg
+        log += ' [Lre(test-L2): %f]' % reconstruction_loss_record.avg
 
         print(log)
         make_log(self.path["tr_log"], log)
@@ -395,12 +487,12 @@ def feature_mimicking(composites, feature_pos, feature_map, num, device):
     pos_feature.view(-1, 512)
     composite_feature.view(-1, 512)
     # L2损失
-    mimicking_loss_criter = nn.MSELoss()
-    mimicking_loss = mimicking_loss_criter(pos_feature, composite_feature)
-    # mimicking_loss = torch.zeros(1).to(device)
-    # for i in range(num.sum()):
-    #     similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
-    #     mimicking_loss += 1 - similarity.squeeze(0)
+    # mimicking_loss_criter = nn.MSELoss()
+    # mimicking_loss = mimicking_loss_criter(pos_feature, composite_feature)
+    mimicking_loss = torch.zeros(1).to(device)
+    for i in range(num.sum()):
+        similarity = torch.cosine_similarity(pos_feature[i], composite_feature[i], dim=0)
+        mimicking_loss += 1 - similarity.squeeze(0)
     return mimicking_loss * alpha
 
 

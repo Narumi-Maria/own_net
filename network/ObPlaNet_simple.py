@@ -132,6 +132,7 @@ class ObPlaNet_resnet18(nn.Module):
         fuse_out = self.upsample_add(self.selfdc_16(bg_out_data_1, in_data_16_aux), \
                                      self.selfdc_8(bg_out_data, in_data_8_aux))  # torch.Size([2, 64, 256, 256])
 
+        # fuse_out = self.selfdc_8(bg_out_data, in_data_8_aux)
         out_data = self.classifier(fuse_out)  # torch.Size([2, 2, 256, 256])
 
         return out_data, fuse_out
